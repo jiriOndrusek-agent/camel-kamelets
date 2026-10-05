@@ -50,6 +50,13 @@ spec:
           CamelLangChain4jIngestDocumentId exchange property before the conversion.
         type: string
         default: CamelLangChain4jIngestDocumentId
+      maxDocumentSize:
+        title: Max Document Size
+        description: Maximum size of the payload in bytes, checked before the conversion; a
+          larger document fails the exchange without being converted. 0, the default, means no
+          limit.
+        type: integer
+        default: 0
       doclingServeUrl:
         title: Docling Serve URL
         description: Address of a Docling Serve instance to convert through, such as
@@ -73,6 +80,21 @@ spec:
         - setProperty:
             name: "CamelLangChain4jIngestDocumentId"
             simple: "${header[{{documentIdHeader}}]}"
+        # the size cap, present only when maxDocumentSize is set: the conversion materializes
+        # the document, so an oversized one is rejected first. length() is free for byte arrays
+        # and cached streams and a streamed count otherwise, never a copy in the heap
+        - choice:
+            precondition: true
+            when:
+              - simple: "${properties:maxDocumentSize:0} > 0"
+                steps:
+                  - choice:
+                      when:
+                        - simple: "${length()} > {{maxDocumentSize}}"
+                          steps:
+                            - throwException:
+                                exceptionType: "java.lang.IllegalArgumentException"
+                                message: "Document '${exchangeProperty.CamelLangChain4jIngestDocumentId}' exceeds maxDocumentSize (${length()} > {{maxDocumentSize}} bytes)"
         - convertBodyTo:
             type: "byte[]"
         - removeHeaders:
